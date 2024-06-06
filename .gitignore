@@ -1,0 +1,5 @@
+__tests__
+.vscode
+dist
+node_modules
+benchmark
