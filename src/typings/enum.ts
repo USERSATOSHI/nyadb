@@ -50,7 +50,13 @@ export enum BloomFilterType {
 	None,
 }
 
-export enum InMemBufferEvents {
+export enum InMemBufferEvent {
 	NeedsFlush = "needsFlush",
 	BufferOpened = "bufferOpened",
+}
+
+export enum ColumnEvent {
+	Ready = "ready",
+	Closed = "closed",
+	
 }

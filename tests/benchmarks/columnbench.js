@@ -21,12 +21,13 @@ const column = new Column({
 	},
 	name: "test",
 	sstConfig: {
-		growthFactor: 4,
+		growthFactor: 3,
 		keyType: "u32",
 		valueType: "u32",
 		path: "./b/column",
 		readMmap: true,
-		levels: 1,
+		levels: 5,
+		threadsForMerge:8,
 		sstThreshold: 100000,
 		sstConfig: {
 			compression: CompressionFlag.None,
@@ -37,6 +38,7 @@ const column = new Column({
 			doBatchValidation: false,
 		},
 	},
+	memType: 'sorted',
 });
 
 await column.init();
@@ -74,9 +76,9 @@ async function run() {
 			b.add("mayHas", () => {
 				column.mayHasKey(Math.floor(Math.random() * getRandom()));
 			}),
-			b.add("delete", async () => {
-				await column.delete(Math.floor(Math.random() * getRandom()));
-			}),
+			// b.add("delete", async () => {
+			// 	await column.delete(Math.floor(Math.random() * getRandom()));
+			// }),
 			b.cycle(),
 			b.complete(),
 			b.save({ file: "SST", version: "1.0.0" }),

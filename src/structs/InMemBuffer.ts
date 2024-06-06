@@ -1,12 +1,12 @@
-import EventEmitter from "events";
-import { IInMemoryBufferOptions } from "../typings/interface.js";
+import { IInMemoryBufferOptions, IInMemBufferEvents } from "../typings/interface.js";
 import { PossibleKeyType } from "../typings/type.js";
 import DataNode from "./Node.js";
 import { OrderedMap, type OrderedMapIterator } from "@js-sdsl/ordered-map";
-import { InMemBufferEvents } from "../typings/enum.js";
+import { InMemBufferEvent } from "../typings/enum.js";
 import WalFile from "../files/Wal.js";
+import { TypedEmitter } from "tiny-typed-emitter";
 
-export default class InMemoryBuffer extends EventEmitter {
+export default class InMemoryBuffer extends TypedEmitter<IInMemBufferEvents> {
 
 	#options: IInMemoryBufferOptions;
 	#buffer: OrderedMap<DataNode["key"], DataNode>;
@@ -45,7 +45,7 @@ export default class InMemoryBuffer extends EventEmitter {
 		this.#buffer.setElement(data.key, data, this.#iter);
 		if (this.size >= this.#options.threshHold) {
 			this.#lock = true;
-			this.emit(InMemBufferEvents.NeedsFlush);
+			this.emit(InMemBufferEvent.NeedsFlush);
 		}
 	}
 
@@ -63,7 +63,7 @@ export default class InMemoryBuffer extends EventEmitter {
 		this.#buffer = new OrderedMap(this.#waitQueue);
 		this.#waitQueue = [];
 		this.#iter = this.#buffer.begin();
-		this.emit(InMemBufferEvents.BufferOpened);
+		this.emit(InMemBufferEvent.BufferOpened);
 		const data = [];
 		for (const [_, value] of buffer) {
 			data.push(value.toUint8Array());

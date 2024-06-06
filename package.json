@@ -14,12 +14,15 @@
     "@types/node": "^20.12.12",
     "benny": "^3.7.1",
     "tslib": "^2.6.2",
+    "typedoc": "^0.25.13",
     "typescript": "^5.4.5"
   },
   "dependencies": {
     "@js-sdsl/ordered-map": "^4.4.2",
+    "@js-sdsl/priority-queue": "^4.4.0",
     "@raygun-nickj/mmap-io": "^1.4.0",
     "murmurhash": "^2.0.1",
-    "sorted-btree": "^1.8.1"
+    "sorted-btree": "^1.8.1",
+    "tiny-typed-emitter": "^2.1.0"
   }
 }

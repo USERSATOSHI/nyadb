@@ -1,6 +1,7 @@
+import { TypedEmitter } from "tiny-typed-emitter";
 import WalFile from "../files/Wal.js";
 import SSTManager from "../managers/SST.js";
-import { InMemBufferEvents, WalMethod } from "../typings/enum.js";
+import { InMemBufferEvent, WalMethod } from "../typings/enum.js";
 import { IColumnOptions } from "../typings/interface.js";
 import { PossibleKeyType } from "../typings/type.js";
 import { checksum } from "../utils/checksum.js";
@@ -8,7 +9,7 @@ import { ValueToTypedArray, getDataTypeByteLength } from "../utils/dataType.js";
 import InMemoryBuffer from "./InMemBuffer.js";
 import DataNode from "./Node.js";
 
-export default class Column {
+export default class Column extends TypedEmitter {
 	#options: IColumnOptions;
 	#sstManager: SSTManager;
 	#inMem: InMemoryBuffer;
@@ -16,6 +17,7 @@ export default class Column {
 	#wal: WalFile;
 
 	constructor(options: IColumnOptions) {
+		super();
 		this.#options = options;
 		this.#sstManager = new SSTManager(this.#options.sstConfig);
 		this.#inMem = new InMemoryBuffer(this.#options.memBufferConfig);
@@ -26,7 +28,7 @@ export default class Column {
 		this.#wal = new WalFile(this.#options.walConfig);
 		
 
-		this.#inMem.on(InMemBufferEvents.NeedsFlush, async () => {
+		this.#inMem.on(InMemBufferEvent.NeedsFlush, async () => {
 			await this.#flush()
 			await this.#wal.truncate();
 		});

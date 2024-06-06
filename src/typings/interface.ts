@@ -1,4 +1,10 @@
-import { BloomFilterType, CompressionFlag, EncodingFlag } from "./enum.js";
+import DataNode from "../structs/Node.js";
+import {
+	BloomFilterType,
+	CompressionFlag,
+	EncodingFlag,
+	InMemBufferEvent,
+} from "./enum.js";
 import { dataType, PossibleKeyType } from "./type.js";
 
 export interface ISSTFileOptions {
@@ -9,19 +15,19 @@ export interface ISSTFileOptions {
 	compression: CompressionFlag;
 	kvCount: number;
 	doBatchValidation: boolean;
-	kvPerPage:number;
+	kvPerPage: number;
 }
 
 export interface IWalFileOptions {
-	path:string;
+	path: string;
 	maxSize: number;
 }
 
 export interface IHeaderData {
-	 magicNumber: `0x${string}`;
-	 versionFlag: number;
-	 compressionFlag: CompressionFlag;
-	 encodingFlag: EncodingFlag;
+	magicNumber: `0x${string}`;
+	versionFlag: number;
+	compressionFlag: CompressionFlag;
+	encodingFlag: EncodingFlag;
 }
 
 export interface IMetadata {
@@ -32,7 +38,7 @@ export interface IMetadata {
 		value: number;
 		checksum: number;
 		total: number;
-	}
+	};
 }
 
 export interface IDataNodeOptions {
@@ -55,10 +61,14 @@ export interface ISSTMangerOptions {
 	path: string;
 	sstThreshold: number;
 	valueType: dataType;
+	threadsForMerge: number;
 	keyType: dataType;
 	levels: number;
 	growthFactor: number;
-	sstConfig: Omit<ISSTFileOptions , 'path' | 'max' | 'min' | 'dataType' | 'KeyDataType'>;
+	sstConfig: Omit<
+		ISSTFileOptions,
+		"path" | "max" | "min" | "dataType" | "KeyDataType"
+	>;
 	readMmap: boolean;
 }
 
@@ -68,11 +78,20 @@ export interface IColumnOptions {
 	keyType: dataType;
 	sstConfig: ISSTMangerOptions;
 	memBufferConfig: IInMemoryBufferOptions;
-  walConfig: IWalFileOptions;	
-  debug?: boolean;
+	walConfig: IWalFileOptions;
 }
 
 export interface ILargeSSTFileOptions extends ISSTFileOptions {
 	bloomFilter: BloomFilterType;
-	
+}
+
+export interface IInMemBufferEvents {
+	[InMemBufferEvent.NeedsFlush]: () => void;
+	[InMemBufferEvent.BufferOpened]: () => void;
+}
+
+export interface ISortAndMergeNode {
+	data: DataNode["data"];
+	index: number;
+	arr: number;
 }

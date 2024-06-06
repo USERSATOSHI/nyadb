@@ -785,7 +785,7 @@ Metadata Length (1 bytes)
 		return this.#readFromOffset(offset);
 	}
 
-	async readAll() {
+	async readAll(returnDataNode: boolean = false) {
 		const data = [];
 		const base = 3 + HEADER + METADATA;
 
@@ -795,7 +795,7 @@ Metadata Length (1 bytes)
 			i += this.#metaData.kvPairLength.total
 		) {
 			const data_ = await this.#readFromOffset(i);
-			data.push(data_);
+			data.push(!returnDataNode ? data_ : data_.build().data);
 		}
 
 		return data;
