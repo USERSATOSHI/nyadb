@@ -50,7 +50,7 @@ export default class InMemoryBuffer extends TypedEmitter<IInMemBufferEvents> {
 	}
 
 	has(key: PossibleKeyType) {
-		return this.#buffer.find(key) !== this.#buffer.end();
+		return  this.#buffer.find(key) !== this.#buffer.end() || this.#waitQueue.find(([k, _]) => k === key) !== undefined;
 	}
 
 	get(key: PossibleKeyType) {
@@ -64,10 +64,13 @@ export default class InMemoryBuffer extends TypedEmitter<IInMemBufferEvents> {
 		this.#waitQueue = [];
 		this.#iter = this.#buffer.begin();
 		this.emit(InMemBufferEvent.BufferOpened);
-		const data = [];
-		for (const [_, value] of buffer) {
-			data.push(value.toUint8Array());
+		const data = new Array<Uint8Array>(buffer.size());
+
+		let idx = 0;
+		for (const [_, node] of buffer) {
+			data[idx++] = node.toUint8Array();
 		}
+
 		return data;
 	}
 
@@ -75,5 +78,13 @@ export default class InMemoryBuffer extends TypedEmitter<IInMemBufferEvents> {
 		this.#buffer.clear();
 		this.#iter = this.#buffer.begin();
 		this.#lock = false;
+	}
+
+	stats() {
+		return {
+			size: this.size,
+			isEmpty: this.isEmpty,
+			lock: this.#lock,
+		};
 	}
 }

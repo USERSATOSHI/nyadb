@@ -9,23 +9,23 @@ import DataNode from "../structs/Node.js";
 import Mutex from "../structs/Mutex.js";
 import { PossibleKeyType } from "../typings/type.js";
 import path from "node:path";
-import BufferNode from "../structs/BufferNode.js";
-import { chunkify, sortAndMerge } from "../utils/sortAndMerge.js";
 import { cpus } from "node:os";
 
 export default class SSTManager {
 	#options: ISSTMangerOptions;
-	#mutex: Mutex = new Mutex();
-	#thresoldForMerge: number;
+	#levelsMutex: Mutex[] = [];
 	#levels: SSTFile[][];
 	#dirHandle: FileHandle[] = [];
 	#interval: NodeJS.Timeout | null = null;
 
 	constructor(options: ISSTMangerOptions) {
 		this.#options = options;
-		this.#thresoldForMerge = this.#options.growthFactor;
 		this.#levels = new Array(this.#options.levels).fill(null).map(() => []);
-		this.#options.threadsForMerge = this.#options.threadsForMerge ?? cpus().length;
+		this.#levelsMutex = new Array(this.#options.levels)
+			.fill(null)
+			.map(() => new Mutex());
+		this.#options.threadsForMerge =
+			this.#options.threadsForMerge ?? cpus().length;
 		this.#enableInterval();
 	}
 
@@ -34,8 +34,8 @@ export default class SSTManager {
 			// check if any level has reached the threshold
 			for (let i = 0; i < this.#levels.length; i++) {
 				if (
-					this.#levels[i].length >= this.#thresoldForMerge &&
-					!this.#mutex.isLocked()
+					this.#levels[i].length >= this.#options.growthFactor &&
+					!this.#levelsMutex[i].isLocked()
 				) {
 					await this.mergeAndCompact(i);
 				}
@@ -84,7 +84,9 @@ export default class SSTManager {
 	}
 
 	async clear() {
-		await Promise.all(this.#levels.map((level) => level.map((s) => s.clearData())));
+		await Promise.all(
+			this.#levels.map((level) => level.map((s) => s.clearData()))
+		);
 	}
 
 	async flushToDisk(data: Uint8Array[], level: number = 0) {
@@ -143,13 +145,7 @@ export default class SSTManager {
 		return false;
 	}
 
-	async #mergeAndCompact(data: {
-		data: Uint8Array[];
-		files: string[];
-		level: number;
-	}) {
-		//console.log("flushing to disk");
-		await this.flushToDisk(data.data, Math.min(data.level + 1, this.#options.levels - 1));
+	async #closeOldFiles(data: { files: string[]; level: number }) {
 		const oldSstables = [...this.#levels[data.level]];
 
 		this.#levels[data.level] = this.#levels[data.level].filter(
@@ -165,55 +161,98 @@ export default class SSTManager {
 		}
 
 		await this.#dirHandle[data.level].sync();
-		this.#mutex.unlock();
+		this.#levelsMutex[data.level].unlock();
+		console.log(`Level ${data.level} has been compacted & Promoted to level ${data.level + 1}: files Compacted: ${data.files.length}`);
 	}
 
 	// write a worker thread to handle merge and compact with mutex lock
 	async mergeAndCompact(level: number = 0) {
-		await this.#mutex.lock();
-
+		await this.#levelsMutex[level].lock();
 		const files = [...this.#levels[level]];
-		const data: DataNode["data"][][] = [];
-		for (const file of files) {
-			const data_: DataNode["data"][] = await file.readAll(true);
-			data.push(data_);
-		}
 
-		const chunks = chunkify(data, this.#options.threadsForMerge);
-		const partialSorted = [];
-		for (const chunk of chunks) {
-			const worker = new Worker(
-				path.resolve(import.meta.dirname, "./Merger.js")
-			);
-			worker.postMessage({
-				data: chunk,
-				options: {
-					keyDataType: this.#options.keyType,
+		const worker = new Worker(
+			path.resolve(import.meta.dirname, "../workers/merge.js")
+		);
+
+		worker.on("message", async (pathOfNewSSTable: string[]) => {
+			for (const path of pathOfNewSSTable) {
+				const sst = new SSTFile({
+					...this.#options.sstConfig,
+					path,
 					dataType: this.#options.valueType,
-				},
-				files: files.map((s) => s.options.path),
-				level,
-			});
+					keyDataType: this.#options.keyType,
+				});
+				await sst.open();
+				this.#levels[level + 1].push(sst);
+			}
+			await this.#dirHandle[level + 1].sync();
+			await worker.terminate();
+			await this.#closeOldFiles({ files:files.map(x => x.options.path), level });
+		});
 
-			worker.on("message", async (data) => {
-				partialSorted.push(data.data);
-				if (partialSorted.length === chunks.length) {
-					await worker.terminate();
-					// join all the partial sorted data
-					const mergedData = sortAndMerge(partialSorted, true);
-					await this.#mergeAndCompact({
-						data: mergedData,
-						files: files.map((s) => s.options.path),
-						level,
-					});
-				}
-			});
-		}
+		worker.on("error", async (err) => {
+			console.error(err);
+			await worker.terminate();
+		});
+
+		worker.on("exit", (code) => {
+			if (code !== 0) {
+				console.error(`Worker stopped with exit code ${code}`);
+			}
+		});
+
+		worker.on("close", () => {
+			this.#levelsMutex[level].unlock();
+		});
+
+		worker.postMessage({
+			filePaths: files.map((f) => f.options.path),
+			level,
+			dataSize: this.#levels[level][0].metaData.kvPairLength.total,
+			kvCount: this.#options.sstConfig.kvCount,
+			growthFactor: this.#options.growthFactor,
+			pathForNextLevel: `${this.#options.path}/level-${level + 1}`,
+			options: {
+				keyDataType: this.#options.keyType,
+				dataType: this.#options.valueType,
+			},
+		});
 	}
 
 	async close() {
-		await this.#dirHandle?.close();
+		await Promise.all(this.#dirHandle.map(async (d) => await d.close()));
 		clearInterval(this.#interval);
-		await Promise.all(this.#levels.map((level) => level.map((s) => s.close())));
+		await Promise.all(
+			this.#levels.map((level) => level.map((s) => s.close()))
+		);
+	}
+
+	async stats() {
+		return await Promise.all(
+			this.#levels.map(async (level, i) => {
+				return {
+					level: i,
+					count: level.length,
+					ssts: await Promise.all(
+						level.map(async (s) => await s.stats())
+					),
+				};
+			})
+		);
+	}
+
+	async ping() {
+		let avgPing = 0;
+
+		let total = 0;
+		
+		for (const level of this.#levels) {
+			for (const sst of level) {
+				total += await sst.ping();
+			}
+		}
+
+		avgPing = total / this.#levels.flat().length;
+		return avgPing;
 	}
 }

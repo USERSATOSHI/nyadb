@@ -1,3 +1,4 @@
+import Column from "../structs/Column.js";
 import DataNode from "../structs/Node.js";
 import {
 	BloomFilterType,
@@ -21,6 +22,7 @@ export interface ISSTFileOptions {
 export interface IWalFileOptions {
 	path: string;
 	maxSize: number;
+	maxBufferSize: number;
 }
 
 export interface IHeaderData {
@@ -50,7 +52,8 @@ export interface IDataNodeOptions {
 	delete: boolean;
 	checksum: Uint8Array;
 	length: number;
-	timestamp: bigint;
+	timestamp: number;
+	dataBuffer: Uint8Array;
 }
 
 export interface IInMemoryBufferOptions {
@@ -79,6 +82,7 @@ export interface IColumnOptions {
 	sstConfig: ISSTMangerOptions;
 	memBufferConfig: IInMemoryBufferOptions;
 	walConfig: IWalFileOptions;
+	cacheSize: number;
 }
 
 export interface ILargeSSTFileOptions extends ISSTFileOptions {
@@ -91,7 +95,33 @@ export interface IInMemBufferEvents {
 }
 
 export interface ISortAndMergeNode {
-	data: DataNode["data"];
+	data: DataNode;
 	index: number;
 	arr: number;
+}
+
+export interface IThreadedMergeAndSort {
+	filePaths: string[];
+	dataSize: number;
+	kvCount: number;
+	growthFactor: number;
+	pathForNextLevel: string;
+	options: {
+		keyDataType: dataType;
+		dataType: dataType;
+	};
+	level: number;
+}
+
+export interface IThreadedReadAll { path: string, dataSize:number }
+
+export interface ITableOptions {
+	name: string;
+	columns: Column[];
+}
+
+export interface IDatabaseOptions {
+	path: string;
+	name: string;
+	tables: ITableOptions[];
 }

@@ -2,56 +2,184 @@ import { PriorityQueue } from "@js-sdsl/priority-queue";
 import DataNode from "../structs/Node.js";
 import { ISortAndMergeNode } from "../typings/interface.js";
 import { OrderedMap } from "@js-sdsl/ordered-map";
+import fsp from "node:fs/promises";
+import SSTFile from "../files/SST.js";
+import { dataType } from "../typings/type.js";
+import { CompressionFlag, EncodingFlag } from "../typings/enum.js";
 
-export const chunkify = (arr: DataNode["data"][][], parts: number) => {
+export function chunkify<T>(arr: T[], parts: number) {
 	const chunks = [];
 	const chunkSize = Math.ceil(arr.length / parts);
 	for (let i = 0; i < arr.length; i += chunkSize) {
 		chunks.push(arr.slice(i, i + chunkSize));
 	}
 	return chunks;
-};
+}
 
-export const sortAndMerge = (
-	data: DataNode["data"][][],
-	uint8Array = false
-): DataNode["data"][] | Uint8Array[] => {
-	const pq = new PriorityQueue<ISortAndMergeNode>(undefined, (a, b) =>
-		a.data.key > b.data.key ? 1 : -1
+export const sortAndMerge = async (
+	filePaths: string[],
+	dataSize: number,
+	kvCount: number,
+	growthFactor: number,
+	pathForNextLevel: string,
+	options: {
+		keyDataType: dataType;
+		dataType: dataType;
+	},
+	level: number
+) => {
+	const resPaths = [];
+	const pq: PriorityQueue<ISortAndMergeNode> = new PriorityQueue(
+		undefined,
+		(a, b) => {
+			return a.data.key < b.data.key
+				? -1
+				: a.data.key > b.data.key
+				? 1
+				: 0;
+		}
 	);
-	for (let i = 0; i < data.length; i++) {
-		pq.push({ data: data[i][0], index: 0, arr: i });
+
+	const fileHandles = await Promise.all(
+		filePaths.map(async (path) => {
+			const fileHandle = await fsp.open(path, "r");
+			return fileHandle;
+		})
+	);
+
+	const SortedArray = new Array<Uint8Array>(10000);
+
+	const maxKvCount = kvCount * growthFactor;
+	let currentKvCounter = 0;
+
+	// add starting buffer to the priority queue
+	let i = 0;
+	for (const fileHandle of fileHandles) {
+		const buffer = new Uint8Array(dataSize);
+		await fileHandle.read(buffer, 0, dataSize, 13);
+
+		const node: ISortAndMergeNode = {
+			data: DataNode.fromUint8Array(buffer, 13, options),
+			index: 0,
+			arr: i++,
+		};
+
+		pq.push(node);
 	}
-	const res = new OrderedMap<DataNode["key"], DataNode>();
-	for (let i = 0; i < data.length * data[0].length; i++) {
+
+	let newSSFile = new SSTFile({
+		path: `${pathForNextLevel}/${Date.now()}.sst`,
+		dataType: options.dataType,
+		keyDataType: options.keyDataType,
+		kvCount: maxKvCount,
+		kvPerPage: 1000,
+		doBatchValidation: false,
+		encoding: EncodingFlag.None,
+		compression: CompressionFlag.None,
+	});
+	resPaths.push(newSSFile.options.path);
+	await newSSFile.open();
+
+	let idx = 0;
+	let LastNode: DataNode | null = null;
+
+	while (!pq.empty()) {
 		const node = pq.pop();
 
 		if (!node) break;
-
-		const resNode = res.getElementByKey(node.data.key);
-		if (resNode && resNode.data.timestamp < node.data.timestamp) {
-			res.setElement(node.data.key, new DataNode(node.data));
-		} else if (!resNode) { 
-			res.setElement(node.data.key, new DataNode(node.data));
-		}
-
-		if (node.index + 1 < data[node.arr].length) {
-			pq.push({
-				data: data[node.arr][node.index + 1],
-				index: node.index + 1,
-				arr: node.arr,
-			});
-		}
-	}
-
-	const finalRes = [];
-	for (const [_, value] of res) {
-		if (uint8Array) {
-			finalRes.push(value.toUint8Array());
+		const offsetForNext = node.data.offset + dataSize;
+		if (LastNode === null) {
+			LastNode = node.data;
 		} else {
-			finalRes.push(value.data);
+			if (LastNode.key === node.data.key) {
+				if (LastNode.timestamp < node.data.timestamp) {
+					LastNode = node.data;
+					SortedArray[idx] = LastNode.toUint8Array();
+				}
+			} else {
+				SortedArray[idx++] = LastNode.toUint8Array();
+				LastNode = node.data;
+			}
+		}
+
+		const fileHandle = fileHandles[node.arr];
+		const buffer = new Uint8Array(dataSize);
+		const { bytesRead } = await fileHandle.read(
+			buffer,
+			0,
+			dataSize,
+			offsetForNext
+		);
+		if (bytesRead === 0) {
+			continue;
+		}
+
+		const newNode: ISortAndMergeNode = {
+			data: DataNode.fromUint8Array(buffer, offsetForNext, options),
+			index: node.index + 1,
+			arr: node.arr,
+		};
+
+		pq.push(newNode);
+
+		if (idx === 10000) {
+			await newSSFile.append(SortedArray);
+			currentKvCounter += 10000;
+
+			if (currentKvCounter >= maxKvCount) {
+				await newSSFile.close();
+				// create new SST file
+				newSSFile = new SSTFile({
+					path: `${pathForNextLevel}/${Date.now()}.sst`,
+					dataType: options.dataType,
+					keyDataType: options.keyDataType,
+					kvCount: maxKvCount,
+					kvPerPage: 1000,
+					doBatchValidation: false,
+					encoding: EncodingFlag.None,
+					compression: CompressionFlag.None,
+				});
+				await newSSFile.open();
+				resPaths.push(newSSFile.options.path);
+				currentKvCounter = 0;
+			}
+			idx = 0;
 		}
 	}
-	// @ts-ignore
-	return finalRes;
+
+	if (idx !== 0) {
+		const allowedSizeLeft = maxKvCount - currentKvCounter;
+		const lastSliceLength = Math.min(allowedSizeLeft, idx);
+
+		await newSSFile.append(SortedArray.slice(0, lastSliceLength));
+
+		const left = idx - lastSliceLength;
+
+		if (left !== 0) {
+			await newSSFile.close();
+
+			// create new SST file
+			newSSFile = new SSTFile({
+				path: `${pathForNextLevel}/${Date.now()}.sst`,
+				dataType: options.dataType,
+				keyDataType: options.keyDataType,
+				kvCount: maxKvCount,
+				kvPerPage: 1000,
+				doBatchValidation: false,
+				encoding: EncodingFlag.None,
+				compression: CompressionFlag.None,
+			});
+			await newSSFile.open();
+			resPaths.push(newSSFile.options.path);
+
+			await newSSFile.append(
+				SortedArray.slice(lastSliceLength, lastSliceLength + left)
+			);
+		}
+	}
+
+	await newSSFile.close();
+	await Promise.all(fileHandles.map((fh) => fh.close()));
+
+	return resPaths;
 };

@@ -21,8 +21,11 @@
     "@js-sdsl/ordered-map": "^4.4.2",
     "@js-sdsl/priority-queue": "^4.4.0",
     "@raygun-nickj/mmap-io": "^1.4.0",
+    "lru-cache": "^10.2.2",
+    "mnemonist": "^0.39.8",
     "murmurhash": "^2.0.1",
     "sorted-btree": "^1.8.1",
-    "tiny-typed-emitter": "^2.1.0"
+    "tiny-typed-emitter": "^2.1.0",
+    "xxhash-wasm": "^1.0.2"
   }
 }

@@ -1,5 +1,6 @@
-import murmurhash from "murmurhash";
+import xxhash from "xxhash-wasm";
 
+const { h32 } = await xxhash();
 export class BloomFilter {
 	#bits: number[];
 	#hashCount: number;
@@ -11,14 +12,14 @@ export class BloomFilter {
 
 	add(key: string) {
 		for (let i = 0; i < this.#hashCount; i++) {
-			const index = murmurhash.v3(key, i) % this.#bits.length;
+			const index = h32(key, i) % this.#bits.length;
 			this.#bits[index] = 1;
 		}
 	}
 
 	lookup(key:string) {
 		for (let i = 0; i < this.#hashCount; i++) {
-			const index = murmurhash.v3(key, i) % this.#bits.length;
+			const index = h32(key, i) % this.#bits.length;
 			if(!this.#bits[index]) return false;
 		}
 		return false;

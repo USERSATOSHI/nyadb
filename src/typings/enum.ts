@@ -60,3 +60,8 @@ export enum ColumnEvent {
 	Closed = "closed",
 	
 }
+
+export enum ThreadWorkType {
+	ReadAll,
+	MergeAndSort
+}

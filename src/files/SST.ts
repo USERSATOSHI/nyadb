@@ -17,14 +17,13 @@ import {
 	DataTypeToValue,
 	getDataTypeByteLength,
 	getEnumKeyFromDataType,
-	ValueToDataType,
 } from "../utils/dataType.js";
 import NyaDBError from "../misc/Error.js";
 import { checksum, validateChecksum } from "../utils/checksum.js";
-import DataNode from "../structs/Node.js";
 import { BloomFilter } from "../structs/Filters.js";
 import { getCellAndHashCount } from "../utils/bloom.js";
 import BufferNode from "../structs/BufferNode.js";
+import DataNode from "../structs/Node.js";
 
 export const HEADER = 7;
 export const METADATA = 3;
@@ -33,7 +32,7 @@ export const SUPPORTED_VERSION = [1];
 export const KVS_PER_PAGE = 1000;
 export const START_DELIMITER = new Uint8Array([0x53, 0x54, 0x41, 0x52]);
 export const END_DELIMITER = new Uint8Array([0x45, 0x4e, 0x44, 0x45]);
-
+export const BASE_BYTES = 33;
 export default class SSTFile {
 	#options: DeepRequired<ISSTFileOptions>;
 	#btree: Btree.default<PossibleKeyType, number> = new Btree.default(
@@ -99,7 +98,7 @@ Metadata Length (1 bytes)
 | | Key Data Type (1 byte)   | |
 | | KVPair Length (1 byte)   | |
 | +---------------------------+ |
-| | STARTDELIMITER (4 bytes ) | key length (4 bytes) | value length (4 bytes) | checksum length (4 bytes) | key (key length) | value (value length) | checksum (32 bytes ) | timestamp (8 bytes) | deleted (1 byte) | ENDDELIMITER (4 bytes) | (repeat for KVS_PER_PAGE times) ||
+| | STARTDELIMITER (4 bytes ) | key length (4 bytes) | value length (4 bytes) | checksum length (4 bytes) | key (key length) | value (value length) | checksum (4 bytes ) | timestamp (8 bytes) | deleted (1 byte) | ENDDELIMITER (4 bytes) | (repeat for KVS_PER_PAGE times) ||
 */
 
 		const bufferArray = new Uint8Array(13);
@@ -131,7 +130,7 @@ Metadata Length (1 bytes)
 			FileDataType[getEnumKeyFromDataType(this.#options.keyDataType)];
 
 		const kvPairLength =
-			61 +
+			BASE_BYTES +
 			getDataTypeByteLength(this.#options.dataType) +
 			getDataTypeByteLength(this.#options.keyDataType);
 		bufferArray[offset++] = kvPairLength;
@@ -256,13 +255,13 @@ Metadata Length (1 bytes)
 
 		if (
 			metadataBuffer[2] !==
-			61 +
+			BASE_BYTES +
 				getDataTypeByteLength(this.#options.dataType) +
 				getDataTypeByteLength(this.#options.keyDataType)
 		) {
 			throw new NyaDBError.InitError(
 				`KVPair Length Mismatch: expected ${
-					57 +
+					BASE_BYTES +
 					getDataTypeByteLength(this.#options.dataType) +
 					getDataTypeByteLength(this.#options.keyDataType)
 				}, got ${metadataBuffer[2]}`,
@@ -279,7 +278,7 @@ Metadata Length (1 bytes)
 				value: getDataTypeByteLength(this.#options.dataType),
 				checksum: 32,
 				total:
-					61 +
+					BASE_BYTES +
 					getDataTypeByteLength(this.#options.dataType) +
 					getDataTypeByteLength(this.#options.keyDataType),
 			},
@@ -408,53 +407,6 @@ Metadata Length (1 bytes)
 			this.#metaData.keyDataType,
 			this.#metaData.valueDataType
 		);
-
-		// 		const kvPairLengthTotal = this.#metaData.kvPairLength.total;
-		// 		const { keyDataType, dataType } = this.#options;
-		// 		let offset_ = 4;
-
-		// 		const dataview = new DataView(line.buffer, offset_, 4);
-
-		// 		const keyLength = dataview.getUint32(0, true);
-		// 		offset_ += 4;
-
-		// 		const valueLength = dataview.getUint32(0, true);
-		// 		offset_ += 4;
-
-		// 		const actualKey = DataTypeToValue(
-		// 			line.slice(offset_, offset_ + keyLength),
-		// 			keyDataType
-		// 		);
-		// 		offset_ += keyLength;
-
-		// 		const actualValue = DataTypeToValue(
-		// 			line.slice(offset_, offset_ + valueLength),
-		// 			dataType
-		// 		);
-		// 		offset_ += valueLength;
-
-		// 		const checksum = line.slice(offset_, offset_ + 32);
-		// 		offset_ += 32;
-
-		// 		const timestamp = new DataView(line.buffer, offset_, 8).getBigUint64(
-		// 			0,
-		// 			true
-		// 		);
-		// 		offset_ += 8;
-
-		// 		const deleted = line[offset_] === 1;
-		//  // @ts-ignore
-		// 		return new DataNode({
-		// 			key: actualKey,
-		// 			value: actualValue,
-		// 			keyType: keyDataType,
-		// 			valueType: dataType,
-		// 			offset,
-		// 			delete: deleted,
-		// 			checksum,
-		// 			length: kvPairLengthTotal,
-		// 			timestamp,
-		// 		});
 	}
 
 	async #buildIndexTree(
@@ -488,7 +440,7 @@ Metadata Length (1 bytes)
 		}
 
 		for (const d of data) {
-			this.#bloomFilter.add(this.#getKeyFromUint8Array(d).toString());
+			this.#bloomFilter.add(this.#getKeyFromUint8Array(d) + '');
 		}
 
 		// save this to .index file
@@ -503,10 +455,13 @@ Metadata Length (1 bytes)
 
 	#getKeyFromUint8Array(line: Uint8Array) {
 		let offset = 4;
-
-		const keyLength = new Uint32Array(line.slice(offset, offset + 4))[0];
+		// keylength is little endian
+		const keyLength = getDataTypeByteLength(this.#metaData.keyDataType);
+		const key = new Uint8Array(keyLength);
 		offset += 12;
-		const key = line.slice(offset, offset + keyLength);
+		for (let i = 0; i < keyLength; i++) {
+			key[i] = line[offset + i];
+		}
 
 		return DataTypeToValue(key, this.#metaData.keyDataType);
 	}
@@ -593,6 +548,12 @@ Metadata Length (1 bytes)
 
 	async close() {
 		await this.#fileHandle.close();
+		await this.#bloomFileHandle.close();
+		await this.#indexFileHandle.close();
+
+		// delete bloom filter
+		this.#bloomFilter.setBits([]);
+		this.#btree.clear()
 		// delete mmap
 		this.#mmap = null;
 	}
@@ -784,8 +745,11 @@ Metadata Length (1 bytes)
 		}
 		return this.#readFromOffset(offset);
 	}
-
-	async readAll(returnDataNode: boolean = false) {
+	async readAll(returnDataNode: true): Promise<BufferNode[]>;
+	async readAll(returnDataNode: false): Promise<DataNode["data"][]>;
+	async readAll(
+		returnDataNode: boolean = false
+	): Promise<(BufferNode | DataNode["data"])[]> {
 		const data = [];
 		const base = 3 + HEADER + METADATA;
 
@@ -865,7 +829,8 @@ Metadata Length (1 bytes)
 		await fsp.unlink(`${this.#options.path.replace(".sst", "")}.index`);
 	}
 
-	// we will never use this function
+	//// we will never use this function 
+	// damn we actually use this function for k way merge
 	async append(data: Uint8Array[]) {
 		// get current position of the cursor in the file
 		const offset = this.#fileSize;
@@ -932,5 +897,22 @@ Metadata Length (1 bytes)
 
 	get btreeSize() {
 		return this.#btree.size;
+	}
+
+	async stats() {
+		return {
+			kvCount: this.#options.kvCount,
+			fileSize: this.#fileSize,
+			btreeSize: this.#btree.size,
+			bloomFilterSize: this.#bloomFilter.bits.length,
+		};
+	}
+	async ping() {
+		// hit with a get request
+		const start = performance.now();
+		await this.readN(1);
+		const end = performance.now();
+
+		return end - start;
 	}
 }

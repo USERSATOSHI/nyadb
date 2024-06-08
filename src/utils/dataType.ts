@@ -141,7 +141,75 @@ export function ValueToTypedArray(input: any, type: dataType): TypedArray {
 
 
 export function ValueToDataType(input: unknown, type: dataType): Uint8Array {
-	return new Uint8Array(ValueToTypedArray(input, type).buffer);
+	if (type.startsWith("str:")) {
+		return new TextEncoder().encode(input as string);
+	} else {
+		switch (type) {
+			case "i8":
+				return new Uint8Array([input as number])
+			case "i16": {
+				// maths
+				const highbits = (input as number) >> 8;
+				const llowbits = (input as number) & 0xff;
+				return new Uint8Array([highbits, llowbits]);
+			}
+			case "i32": {
+				const highestbits = (input as number) >> 24;
+				const highbits = ((input as number) >> 16) & 0xff;
+				const lowbits = ((input as number) >> 8) & 0xff;
+				const lowestbits = (input as number) & 0xff;
+				return new Uint8Array([highestbits, highbits, lowbits, lowestbits]);
+			}
+			case "i64": {
+				const bigint = BigInt(input as number);
+				const highestbits = Number(bigint >> 56n);
+				const highbits = Number((bigint >> 48n) & 0xffn);
+				const highlowbits = Number((bigint >> 40n) & 0xffn);
+				const highlowestbits = Number((bigint >> 32n) & 0xffn);
+				const lowhighestbits = Number((bigint >> 24n) & 0xffn);
+				const lowhighbits = Number((bigint >> 16n) & 0xffn);
+				const lowlowbits = Number((bigint >> 8n) & 0xffn);
+				const lowestbits = Number(bigint & 0xffn);
+				return new Uint8Array([highestbits, highbits, highlowbits, highlowestbits, lowhighestbits, lowhighbits, lowlowbits, lowestbits]);
+			}
+			case "u8":
+				return new Uint8Array([input as number]);
+			case "u16": {
+				const highbits = (input as number) >> 8;
+				const llowbits = (input as number) & 0xff;
+				return new Uint8Array([highbits, llowbits]);
+			}
+			case "u32": {
+				const highestbits = (input as number) >> 24;
+				const highbits = ((input as number) >> 16) & 0xff;
+				const lowbits = ((input as number) >> 8) & 0xff;
+				const lowestbits = (input as number) & 0xff;
+				return new Uint8Array([highestbits, highbits, lowbits, lowestbits]);
+			}
+			case "u64": {
+				const bigint = BigInt(input as number);
+				const highestbits = Number(bigint >> 56n);
+				const highbits = Number((bigint >> 48n) & 0xffn);
+				const highlowbits = Number((bigint >> 40n) & 0xffn);
+				const highlowestbits = Number((bigint >> 32n) & 0xffn);
+				const lowhighestbits = Number((bigint >> 24n) & 0xffn);
+				const lowhighbits = Number((bigint >> 16n) & 0xffn);
+				const lowlowbits = Number((bigint >> 8n) & 0xffn);
+				const lowestbits = Number(bigint & 0xffn);
+				return new Uint8Array([highestbits, highbits, highlowbits, highlowestbits, lowhighestbits, lowhighbits, lowlowbits, lowestbits]);
+			}
+			case "f32": {
+				return new Uint8Array(new Float32Array([input as number]).buffer);
+			}
+			case "f64": {
+				return new Uint8Array(new Float64Array([input as number]).buffer);
+			}
+			case "bool":
+				return new Uint8Array([input as number]);
+			default:
+				throw new Error(`Invalid data type: ${type}`);
+		}
+	}
 }
 
 export function ValueToBuffer(input: any, type: dataType): Buffer {
@@ -149,7 +217,7 @@ export function ValueToBuffer(input: any, type: dataType): Buffer {
 
 }
 
-export function getEnumKeyFromDataType(type: dataType): FileDataTypeMember {
+export function getEnumKeyFromDataType(type: dataType): keyof typeof FileDataType {
 	if (type.startsWith("str:")) {
 		return "Str";
 	} else {
@@ -280,4 +348,33 @@ export function getDataTypeFromEnum(type:FileDataType,keyLength?:number) {
 		default:
 			throw new Error(`Invalid data type: ${type}`);
 	}
+}
+
+export function timestampToUint8ArrayLE(timestampInMs:number) {
+    // Special case for zero
+    if (timestampInMs === 0) {
+        return new Uint8Array(8);
+    }
+
+    const exponent = Math.floor(Math.log2(timestampInMs));
+    const mantissa = timestampInMs / Math.pow(2, exponent) - 1;
+
+    const biasedExponent = exponent + 1023;
+
+    const mantissaHigh = Math.floor(mantissa * Math.pow(2, 20));
+    const mantissaLow = Math.floor((mantissa * Math.pow(2, 52)) % Math.pow(2, 32));
+
+    const highBits = (biasedExponent << 20) | mantissaHigh;
+    const lowBits = mantissaLow;
+
+    return [
+        lowBits & 0xFF,
+		(lowBits >> 8) & 0xFF,
+		(lowBits >> 16) & 0xFF,
+		(lowBits >> 24) & 0xFF,
+		highBits & 0xFF,
+		(highBits >> 8) & 0xFF,
+		(highBits >> 16) & 0xFF,
+		(highBits >> 24) & 0xFF,
+    ];
 }

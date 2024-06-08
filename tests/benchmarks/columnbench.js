@@ -8,6 +8,7 @@ import { setTimeout } from "node:timers/promises";
 import v8 from "node:v8";
 import Column from "../../dist/structs/Column.js";
 const range = get4pointRangeOfDataType("u32");
+const keys = [];
 
 const column = new Column({
 	keyType: "u32",
@@ -18,10 +19,11 @@ const column = new Column({
 	walConfig: {
 		path: "./b/column/txt.wal",
 		maxSize: 100000,
+		maxBufferSize:1000
 	},
 	name: "test",
 	sstConfig: {
-		growthFactor: 3,
+		growthFactor: 100,
 		keyType: "u32",
 		valueType: "u32",
 		path: "./b/column",
@@ -38,7 +40,7 @@ const column = new Column({
 			doBatchValidation: false,
 		},
 	},
-	memType: 'sorted',
+	cacheSize: 10000,
 });
 
 await column.init();
@@ -54,7 +56,7 @@ function getRandom() {
 	return Math.floor(Math.random() * range[3]);
 }
 
-await setTimeout(1000);
+await setTimeout(5000);
 const avg = [];
 async function run() {
 	let times = 1;
@@ -62,22 +64,23 @@ async function run() {
 	while (times--) {
 		await b.suite(
 			"Column",
-			b.add("insert", () => {
+			b.add("insert",() => {
 				const data = getRandomData();
+				keys.push(data[0]);
 				column.insert(data[0], data[1]);
 			}),
 
 			b.add("get", async () => {
-				await column.get(Math.floor(Math.random() * getRandom()));
+				await column.get(keys[Math.floor(Math.random() * keys.length)]);
 			}),
 			b.add("has", async () => {
-				await column.has(Math.floor(Math.random() * getRandom()));
+				await column.has(keys[Math.floor(Math.random() * keys.length)]);
 			}),
 			b.add("mayHas", () => {
-				column.mayHasKey(Math.floor(Math.random() * getRandom()));
+				column.mayHasKey(keys[Math.floor(Math.random() * keys.length)]);
 			}),
 			// b.add("delete", async () => {
-			// 	await column.delete(Math.floor(Math.random() * getRandom()));
+			// 	await column.delete(getRandom());
 			// }),
 			b.cycle(),
 			b.complete(),
@@ -88,5 +91,12 @@ async function run() {
 }
 
 await run();
+
+
+
 console.log(Object.entries(v8.getHeapStatistics()).map(([key, value]) => `${key}: ${(value / 1024 / 1024).toFixed(2)} MB`));
 
+console.log((await column.wal.read(false)).length);
+console.log(column.inMem.size);
+
+console.log(await column.stats());
