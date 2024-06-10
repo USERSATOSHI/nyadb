@@ -6,6 +6,7 @@ import DataNode from "../structs/Node.js";
 import { WalMethod } from "../typings/enum.js";
 import Column from "../structs/Column.js";
 import { getDataTypeByteLength } from "../utils/dataType.js";
+import { platform } from "node:os";
 
 const WAL_FILE_MAGIC_NUMBER = new Uint8Array([0x57, 0x41, 0x4c, 0x46]);
 
@@ -24,6 +25,8 @@ export default class WalFile {
 	#byteCounterTransform!: Transform;
 	#column: Column;
 	#paused: boolean = false;
+	platfrom: string = platform();
+	#lastOffset: number = 0;
 	#length: number;
 
 	constructor(options: IWalFileOptions, column: Column) {
@@ -47,8 +50,7 @@ export default class WalFile {
 		this.#fileHandle = await fsp.open(
 			this.#options.path,
 			fsp.constants.O_CREAT |
-				fsp.constants.O_RDWR |
-				fsp.constants.O_APPEND
+				fsp.constants.O_RDWR | (platform() === "win32" ? 0 : fsp.constants.O_APPEND)
 		);
 		this.#fileSize = (await this.#fileHandle.stat()).size;
 		if (this.#fileSize === 0) {
