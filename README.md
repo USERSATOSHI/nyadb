@@ -100,7 +100,7 @@ await db.close();
 > Environment:
 >
 > - Arch Linux 6.9.3-arch1
-> - Intel(R) Core(TM) i5-7200U CPU @ 2.50GHz
+> - 11th Gen Intel(R) Core(TM) i5-1135G7 (8) @ 4.20 GHz
 > - 16GB RAM DDR4
 > - Node v20.14.0
 > - NyaDB v1.0.0
