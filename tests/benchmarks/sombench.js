@@ -28,7 +28,7 @@ export function optValueToDataType(input, type) {
 
             case "i64":
             case "u64":
-                const bigInt = BigInt(num);
+                const bigInt = num;
                 return new Uint8Array([
                     Number((bigInt >> 56n) & 0xffn),
                     Number((bigInt >> 48n) & 0xffn),
@@ -59,6 +59,7 @@ export function optValueToDataType(input, type) {
         }
     }
 }
+
 
 
 const input = 0x12345678;

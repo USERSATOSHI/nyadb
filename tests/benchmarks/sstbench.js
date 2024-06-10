@@ -117,8 +117,9 @@ function getRandomData() {
 		keyType: "u32",
 		valueType: "u32",
 		offset: idx,
-		timestamp: BigInt(Date.now()),
+		timestamp: Date.now(),
 		length: file.metaData.kvPairLength.total,
+		dataBuffer: checksumdatabuffer,
 	});
 	idx += node.toUint8Array().length;
 	key++;
@@ -149,7 +150,7 @@ async function run() {
 				await file.readKey(Math.floor(Math.random() * getRandom32UintValue()));
 			}),
 			b.add("SST Read from Mmap", async () => {
-				console.log((await file.readKeyMmap(Math.floor(Math.random() * getRandom32UintValue())))?.build());
+				(await file.readKeyMmap(Math.floor(Math.random() * getRandom32UintValue())))
 			}),
 			b.add("sst Read OptiMMap", async () => {
 				(await file.optreadKeyMmap(Math.floor(Math.random() * getRandom32UintValue())));

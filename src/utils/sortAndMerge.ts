@@ -1,6 +1,6 @@
 import { PriorityQueue } from "@js-sdsl/priority-queue";
 import DataNode from "../structs/Node.js";
-import { ISortAndMergeNode } from "../typings/interface.js";
+import { ISortAndMergeNode, ISSTFileOptions } from "../typings/interface.js";
 import { OrderedMap } from "@js-sdsl/ordered-map";
 import fsp from "node:fs/promises";
 import SSTFile from "../files/SST.js";
@@ -25,6 +25,7 @@ export const sortAndMerge = async (
 	options: {
 		keyDataType: dataType;
 		dataType: dataType;
+		customHashFunction: ISSTFileOptions['customHashFunction']
 	},
 	level: number
 ) => {
@@ -76,6 +77,7 @@ export const sortAndMerge = async (
 		doBatchValidation: false,
 		encoding: EncodingFlag.None,
 		compression: CompressionFlag.None,
+		customHashFunction: options.customHashFunction
 	});
 	resPaths.push(newSSFile.options.path);
 	await newSSFile.open();
@@ -138,6 +140,7 @@ export const sortAndMerge = async (
 					doBatchValidation: false,
 					encoding: EncodingFlag.None,
 					compression: CompressionFlag.None,
+					customHashFunction: options.customHashFunction
 				});
 				await newSSFile.open();
 				resPaths.push(newSSFile.options.path);
@@ -168,6 +171,7 @@ export const sortAndMerge = async (
 				doBatchValidation: false,
 				encoding: EncodingFlag.None,
 				compression: CompressionFlag.None,
+				customHashFunction: options.customHashFunction
 			});
 			await newSSFile.open();
 			resPaths.push(newSSFile.options.path);

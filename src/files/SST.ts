@@ -12,7 +12,12 @@ import {
 	IHeaderData,
 	IMetadata,
 } from "../typings/interface.js";
-import { DeepRequired, PossibleKeyType } from "../typings/type.js";
+import {
+	availableDataTypeForHash,
+	DeepRequired,
+	HashInputType,
+	PossibleKeyType,
+} from "../typings/type.js";
 import {
 	DataTypeToValue,
 	getDataTypeByteLength,
@@ -45,7 +50,7 @@ export default class SSTFile {
 	);
 	#headerData!: IHeaderData;
 	#metaData!: IMetadata;
-	#bloomFilter!: BloomFilter;
+	#bloomFilter!: BloomFilter<availableDataTypeForHash>;
 	#fileHandle!: fsp.FileHandle;
 	#bloomFileHandle!: fsp.FileHandle;
 	#indexFileHandle!: fsp.FileHandle;
@@ -60,7 +65,12 @@ export default class SSTFile {
 			this.#options.kvCount,
 			0.2
 		);
-		this.#bloomFilter = new BloomFilter(bitCount, hashCount);
+		this.#bloomFilter = new BloomFilter(
+			bitCount,
+			hashCount,
+			options.keyDataType as availableDataTypeForHash,
+			options.customHashFunction
+		);
 	}
 
 	#defaultOptions: ISSTFileOptions = {
@@ -72,9 +82,11 @@ export default class SSTFile {
 		kvCount: 10000,
 		doBatchValidation: false,
 		kvPerPage: 1000,
+		customHashFunction: null,
 	};
 
 	#finalizeOptions(options: ISSTFileOptions): DeepRequired<ISSTFileOptions> {
+		options.customHashFunction = !options.customHashFunction ? null : options.customHashFunction;
 		return {
 			...this.#defaultOptions,
 			...options,
@@ -409,29 +421,12 @@ Metadata Length (1 bytes)
 		);
 	}
 
-	async #buildIndexTree(
-		data: Uint8Array[],
-		append: boolean = false,
-		baseOffset = 0
-	) {
-		let base = append ? baseOffset : 3 + HEADER + METADATA;
-		if (!append) {
-			this.#bloomFilter.clear();
-			this.#btree.clear();
-		} else {
-			this.#options.kvCount += data.length;
-			const [bitCount, hashCount] = getCellAndHashCount(
-				this.#options.kvCount,
-				0.2
-			);
-			// copy the old bloom filter into new array
-			const newArray = new Array(bitCount).fill(0);
-			this.#bloomFilter.bits.forEach((bit, index) => {
-				newArray[index] = bit;
-			});
-			this.#bloomFilter.setBits(newArray);
-			this.#bloomFilter.setHashCount(hashCount);
-		}
+	async #buildIndexTree(data: Uint8Array[]) {
+		let base = 3 + HEADER + METADATA;
+
+		this.#btree.clear();
+		this.#bloomFilter.clear();
+
 		// save every KVS_PER_PAGEth key
 		for (let i = 0; i < data.length; i += this.options.kvPerPage) {
 			const key = this.#getKeyFromUint8Array(data[i]);
@@ -440,17 +435,13 @@ Metadata Length (1 bytes)
 		}
 
 		for (const d of data) {
-			this.#bloomFilter.add(this.#getKeyFromUint8Array(d) + '');
+			this.#bloomFilter.add(this.#getKeyFromUint8Array(d));
 		}
 
 		// save this to .index file
 		await this.#indexFileHandle.write(this.#btree.toString(), 0, "utf-8");
 		// save this to .bloom file
-		await this.#bloomFileHandle.write(
-			this.#bloomFilter.bits.toString(),
-			0,
-			"utf-8"
-		);
+		await this.#bloomFileHandle.write(this.#bloomFilter.bits.toString(), 0);
 	}
 
 	#getKeyFromUint8Array(line: Uint8Array) {
@@ -553,7 +544,7 @@ Metadata Length (1 bytes)
 
 		// delete bloom filter
 		this.#bloomFilter.setBits([]);
-		this.#btree.clear()
+		this.#btree.clear();
 		// delete mmap
 		this.#mmap = null;
 	}
@@ -795,7 +786,7 @@ Metadata Length (1 bytes)
 				"Switching to read from file"
 			);
 		}
-		await this.#buildIndexTree(data, false, 13);
+		await this.#buildIndexTree(data);
 	}
 
 	async clearData() {
@@ -803,7 +794,9 @@ Metadata Length (1 bytes)
 	}
 
 	mayHasKey(key: PossibleKeyType) {
-		return this.#bloomFilter.lookup(key.toString());
+		return this.#bloomFilter.lookup(
+			key as HashInputType<availableDataTypeForHash>
+		);
 	}
 
 	async hasKey(key: PossibleKeyType, useMmap: boolean) {
@@ -829,7 +822,7 @@ Metadata Length (1 bytes)
 		await fsp.unlink(`${this.#options.path.replace(".sst", "")}.index`);
 	}
 
-	//// we will never use this function 
+	//// we will never use this function
 	// damn we actually use this function for k way merge
 	async append(data: Uint8Array[]) {
 		// get current position of the cursor in the file
@@ -868,7 +861,32 @@ Metadata Length (1 bytes)
 		}
 
 		// update the index tree
-		await this.#buildIndexTree(data, true, offset);
+		await this.#buildAppendIndexTree(data, offset);
+	}
+
+	async #buildAppendIndexTree(data: Uint8Array[], offset: number) {
+		// only add the KVS_PER_PAGEth key starting from 0;
+		let base = offset;
+
+		for (let i = 0; i < data.length; i += this.#options.kvPerPage) {
+			this.#btree.set(this.#getKeyFromUint8Array(data[i]), base);
+			base += this.#options.kvPerPage * this.#metaData.kvPairLength.total;
+		}
+
+		// parallel interate over the data and add the keys to the bloom filter
+		for (const d of data) {
+			this.#bloomFilter.add(this.#getKeyFromUint8Array(d) + "");
+		}
+
+		// save this to .index file
+		await this.#indexFileHandle.write(this.#btree.toString(), 0, "utf-8");
+		// save this to .bloom file
+		await this.#bloomFileHandle.write(
+			this.#bloomFilter.bits.toArray(),
+			0,
+			this.#bloomFilter.bits.size,
+			0
+		);
 	}
 
 	get options() {

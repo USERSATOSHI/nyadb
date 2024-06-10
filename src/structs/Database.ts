@@ -3,6 +3,7 @@ import { IDatabaseOptions } from "../typings/interface.js";
 import fs from "node:fs";
 import Table from "./Table.js";
 import { PossibleKeyType } from "../typings/type.js";
+import * as tar from "tar";
 export default class Database extends TypedEmitter {
 	#options: IDatabaseOptions;
 	#tables: Map<string, Table> = new Map();
@@ -12,7 +13,7 @@ export default class Database extends TypedEmitter {
 		this.#options = options;
 	}
 
-	#areAllTbalesReady(table: Table) {
+	#areAllTablesReady(table: Table) {
 		if (this.#tables.size === this.#options.tables.length) {
 			this.emit("ready");
 			this.#readyAt = Date.now();
@@ -27,9 +28,13 @@ export default class Database extends TypedEmitter {
 			await fs.promises.mkdir(path, { recursive: true });
 		}
 
+		if( !fs.existsSync(path +'/.snapshots')){
+			await fs.promises.mkdir(path +'/.snapshots', { recursive: true });
+		}
+
 		for (const table of this.#options.tables) {
 			const t = new Table(table, this);
-			t.on("ready", () => this.#areAllTbalesReady(t));
+			t.on("ready", () => this.#areAllTablesReady(t));
 			await t.init();
 		}
 
@@ -97,7 +102,7 @@ export default class Database extends TypedEmitter {
 		return await tbl.has(column, key);
 	}
 
-	async bloomCheck(
+	bloomCheck(
 		table: string,
 		data: {
 			column: string;
@@ -112,7 +117,7 @@ export default class Database extends TypedEmitter {
 		if (!tbl) {
 			throw new Error("Table not found");
 		}
-		return await tbl.bloomCheck(column, key);
+		return tbl.bloomCheck(column, key);
 	}
 
 	async delete(
@@ -159,6 +164,35 @@ export default class Database extends TypedEmitter {
 			stats.push(await tbl.stats());
 		}
 		return stats;
+	}
+
+	async snapshot() {
+		// take snapshot of database and store it in .snapshots
+		const path = this.#options.path;
+		const snapshotPath = path + '/.snapshots/' + Date.now() + '.tar';
+		// excllude .snapshots folder
+		tar.c({
+			file: snapshotPath,
+			cwd: path,
+			gzip: true,
+			// exclude .snapshots folder
+			filter(path, entry) {
+				return !path.includes('.snapshots');
+			},
+		}, ['.']);
+		return snapshotPath;
+
+	}
+
+	async restoreFromSnapshot(snapshotPath: string) {
+		// restore database from snapshot
+		const path = this.#options.path;
+		await tar.x({
+			file: snapshotPath,
+			cwd: path,
+			keep: false,
+			unlink: true,
+		});
 	}
 
 	get readyAt() {

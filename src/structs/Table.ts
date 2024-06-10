@@ -5,10 +5,10 @@ import { PossibleKeyType } from "../typings/type.js";
 import Column from "./Column.js";
 import Database from "./Database.js";
 export default class Table extends TypedEmitter {
-	#name: ITableOptions['name'];
+	#name: ITableOptions["name"];
 	#columns: Map<string, Column> = new Map();
 	#db: Database;
-	constructor(options: ITableOptions, database:Database) {
+	constructor(options: ITableOptions, database: Database) {
 		super();
 		this.#name = options.name;
 		for (const column of options.columns) {
@@ -16,15 +16,23 @@ export default class Table extends TypedEmitter {
 		}
 		this.#db = database;
 	}
-	
+
 	async init() {
-		const databasePath = '';
+		const databasePath = this.#db.options.path;
 		const path = databasePath + "/" + this.#name;
 		if (!fs.existsSync(path)) {
 			await fs.promises.mkdir(path, { recursive: true });
 		}
-	}
 
+		for (const column of this.#columns.values()) {
+			column.setPath(
+				`${this.#db.options.path}/${this.#name}/${column.options.name}`
+			);
+			await column.init();
+		}
+
+		this.emit("ready");
+	}
 
 	async close() {
 		for (const column of this.#columns.values()) {
@@ -56,12 +64,12 @@ export default class Table extends TypedEmitter {
 		return await col.has(key);
 	}
 
-	async bloomCheck(column: string, key: PossibleKeyType) {
+	bloomCheck(column: string, key: PossibleKeyType) {
 		const col = this.#columns.get(column);
 		if (!col) {
 			throw new Error("Column not found");
 		}
-		return await col.mayHasKey(key);
+		return col.mayHasKey(key);
 	}
 
 	async delete(column: string, key: PossibleKeyType) {
@@ -71,7 +79,7 @@ export default class Table extends TypedEmitter {
 		}
 		await col.delete(key);
 	}
-	
+
 	async clear(column?: string): Promise<void> {
 		if (column) {
 			const col = this.#columns.get(column);
@@ -110,8 +118,11 @@ export default class Table extends TypedEmitter {
 		return this.#columns;
 	}
 
-	hasColumn(column: string) {	
-		return this.#columns.has(column);
+	get database() {
+		return this.#db;
 	}
 
+	hasColumn(column: string) {
+		return this.#columns.has(column);
+	}
 }

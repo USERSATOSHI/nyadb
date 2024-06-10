@@ -2,7 +2,7 @@
 import fsp, { FileHandle } from "node:fs/promises";
 import fs from "node:fs";
 import { Worker } from "node:worker_threads";
-
+import utils from "node:util";
 import SSTFile from "../files/SST.js";
 import { ISSTMangerOptions } from "../typings/interface.js";
 import DataNode from "../structs/Node.js";
@@ -10,6 +10,9 @@ import Mutex from "../structs/Mutex.js";
 import { PossibleKeyType } from "../typings/type.js";
 import path from "node:path";
 import { cpus } from "node:os";
+import { CompressionFlag, EncodingFlag } from "../typings/enum.js";
+import { mergeOptions } from "../utils/mergeOptions.js";
+import Column from "../structs/Column.js";
 
 export default class SSTManager {
 	#options: ISSTMangerOptions;
@@ -17,9 +20,10 @@ export default class SSTManager {
 	#levels: SSTFile[][];
 	#dirHandle: FileHandle[] = [];
 	#interval: NodeJS.Timeout | null = null;
+	#column: Column;
 
-	constructor(options: ISSTMangerOptions) {
-		this.#options = options;
+	constructor(options: Partial<ISSTMangerOptions>,column:Column) {
+		this.#options = mergeOptions(SSTManager.defaultOptions(), options);
 		this.#levels = new Array(this.#options.levels).fill(null).map(() => []);
 		this.#levelsMutex = new Array(this.#options.levels)
 			.fill(null)
@@ -27,6 +31,29 @@ export default class SSTManager {
 		this.#options.threadsForMerge =
 			this.#options.threadsForMerge ?? cpus().length;
 		this.#enableInterval();
+		this.#column = column;
+	}
+
+	static defaultOptions(): ISSTMangerOptions {
+		return {
+			path: "./data",
+			levels: 4,
+			growthFactor: 10,
+			sstConfig: {
+				encoding: EncodingFlag.None,
+				compression: CompressionFlag.None,
+				kvCount: 100000,
+				doBatchValidation: false,
+				kvPerPage: 1000,
+			},
+			keyType: "u32",
+			valueType: "u32",
+		};
+	
+	}
+
+	setPath(path: string) {
+		this.#options.path = path;
 	}
 
 	async #enableInterval() {
@@ -40,7 +67,7 @@ export default class SSTManager {
 					await this.mergeAndCompact(i);
 				}
 			}
-		}, 10000);
+		}, 30000);
 	}
 
 	async init() {
@@ -108,9 +135,9 @@ export default class SSTManager {
 			for (let i = this.#levels[j].length - 1; i >= 0; i--) {
 				const sst = this.#levels[j][i];
 				if (sst.mayHasKey(key)) {
-					const val = await sst.optreadKeyMmap(key);
+					const val = (this.#options.readMmap ? await sst.optreadKeyMmap(key) : await sst.readKey(key));
 					if (val) {
-						return val;
+						return val.build();
 					}
 				}
 			}
@@ -133,16 +160,10 @@ export default class SSTManager {
 	}
 
 	mayHasKey(key: PossibleKeyType): boolean {
-		for (let j = 0; j < this.#levels.length; j++) {
-			for (let i = this.#levels[j].length - 1; i >= 0; i--) {
-				const sst = this.#levels[j][i];
-				if (sst.mayHasKey(key)) {
-					return true;
-				}
-			}
-		}
-
-		return false;
+		// fastest way to check if key exists without nested for loop
+		return this.#levels.some((level) =>
+			level.some((sst) => sst.mayHasKey(key))
+		);
 	}
 
 	async #closeOldFiles(data: { files: string[]; level: number }) {
@@ -215,6 +236,7 @@ export default class SSTManager {
 			options: {
 				keyDataType: this.#options.keyType,
 				dataType: this.#options.valueType,
+				customHashFunction: this.#options.customHashFunction?.toString(),
 			},
 		});
 	}
@@ -255,4 +277,5 @@ export default class SSTManager {
 		avgPing = total / this.#levels.flat().length;
 		return avgPing;
 	}
+
 }

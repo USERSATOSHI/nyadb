@@ -6,7 +6,7 @@ import {
 	EncodingFlag,
 	InMemBufferEvent,
 } from "./enum.js";
-import { dataType, PossibleKeyType } from "./type.js";
+import { availableDataTypeForHash, dataType, HashFunction, HashInputType, PossibleKeyType, u32 } from "./type.js";
 
 export interface ISSTFileOptions {
 	path: string;
@@ -17,12 +17,11 @@ export interface ISSTFileOptions {
 	kvCount: number;
 	doBatchValidation: boolean;
 	kvPerPage: number;
+	customHashFunction: HashFunction<availableDataTypeForHash> | null;
 }
 
 export interface IWalFileOptions {
 	path: string;
-	maxSize: number;
-	maxBufferSize: number;
 }
 
 export interface IHeaderData {
@@ -73,16 +72,19 @@ export interface ISSTMangerOptions {
 		"path" | "max" | "min" | "dataType" | "KeyDataType"
 	>;
 	readMmap: boolean;
+	customHashFunction?: HashFunction<availableDataTypeForHash> | null;
 }
 
 export interface IColumnOptions {
 	name: string;
 	valueType: dataType;
 	keyType: dataType;
-	sstConfig: ISSTMangerOptions;
+	sstConfig: Omit<ISSTMangerOptions, 'path' | 'valueType' | 'keyType'>;
 	memBufferConfig: IInMemoryBufferOptions;
 	walConfig: IWalFileOptions;
 	cacheSize: number;
+	path: string;
+	customHashFunction?: HashFunction<availableDataTypeForHash> | null;
 }
 
 export interface ILargeSSTFileOptions extends ISSTFileOptions {
@@ -109,6 +111,7 @@ export interface IThreadedMergeAndSort {
 	options: {
 		keyDataType: dataType;
 		dataType: dataType;
+		customHashFunction: string;
 	};
 	level: number;
 }

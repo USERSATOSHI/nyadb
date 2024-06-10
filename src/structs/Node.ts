@@ -46,8 +46,10 @@ export default class DataNode {
 		let offset = 0;
 
 		// Set the start delimiter
-		buffer.set(START_DELIMITER, offset);
-		offset += 4;
+		buffer[offset++] = START_DELIMITER[0];
+		buffer[offset++] = START_DELIMITER[1];
+		buffer[offset++] = START_DELIMITER[2];
+		buffer[offset++] = START_DELIMITER[3];
 
 		//convert keyLength from u32 to u8[4] - if u are wondering why i did this, because this added one more 0 to ops :)
 		let highestbits = keyTypeLength >> 24
@@ -101,7 +103,11 @@ export default class DataNode {
 		buffer[offset++] = this.#delete ? 0x01 : 0x00;
 
 		// Set the end delimiter
-		buffer.set(END_DELIMITER, offset);
+		buffer[offset++] = END_DELIMITER[0];
+		buffer[offset++] = END_DELIMITER[1];
+		buffer[offset++] = END_DELIMITER[2];
+		buffer[offset++] = END_DELIMITER[3];
+
 		return buffer;
 	}
 

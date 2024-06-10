@@ -13,8 +13,12 @@
   "devDependencies": {
     "@types/node": "^20.12.12",
     "benny": "^3.7.1",
+    "murmurhash": "^2.0.1",
     "tslib": "^2.6.2",
     "typedoc": "^0.25.13",
+    "typedoc-plugin-extras": "^3.0.0",
+    "typedoc-plugin-mermaid": "^1.10.0",
+    "typedoc-theme-hierarchy": "^4.1.2",
     "typescript": "^5.4.5"
   },
   "dependencies": {
@@ -23,8 +27,8 @@
     "@raygun-nickj/mmap-io": "^1.4.0",
     "lru-cache": "^10.2.2",
     "mnemonist": "^0.39.8",
-    "murmurhash": "^2.0.1",
     "sorted-btree": "^1.8.1",
+    "tar": "^7.2.0",
     "tiny-typed-emitter": "^2.1.0",
     "xxhash-wasm": "^1.0.2"
   }

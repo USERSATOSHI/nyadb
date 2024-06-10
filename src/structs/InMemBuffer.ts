@@ -5,6 +5,7 @@ import { OrderedMap, type OrderedMapIterator } from "@js-sdsl/ordered-map";
 import { InMemBufferEvent } from "../typings/enum.js";
 import WalFile from "../files/Wal.js";
 import { TypedEmitter } from "tiny-typed-emitter";
+import { mergeOptions } from "../utils/mergeOptions.js";
 
 export default class InMemoryBuffer extends TypedEmitter<IInMemBufferEvents> {
 
@@ -14,9 +15,15 @@ export default class InMemoryBuffer extends TypedEmitter<IInMemBufferEvents> {
 	#iter: OrderedMapIterator<DataNode["key"], DataNode>;
 	#waitQueue: [DataNode["key"], DataNode][] = []; 
 
+	static defaultOptions(): IInMemoryBufferOptions {
+		return {
+			threshHold: 100000,
+		};
+	}
+
 	constructor(options: IInMemoryBufferOptions) {
 		super();
-		this.#options = options;
+		this.#options = mergeOptions(InMemoryBuffer.defaultOptions(), options);
 		this.#buffer = new OrderedMap();
 		this.#iter = this.#buffer.begin();
 	}

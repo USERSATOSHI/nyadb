@@ -1,0 +1,17 @@
+{
+    "entryPoints": [
+        "./src/index.ts"
+    ],
+    "out": "./docs",
+    "tsconfig": "./tsconfig.json",
+    "entryPointStrategy": "resolve",
+    "json": "./docs/json",
+    "commentStyle": "all",
+    "jsDocCompatibility": true,
+    "includeVersion": true,
+    "categorizeByGroup": true,
+    "darkHighlightTheme": "material-theme-palenight",
+    "navigation": true,
+    "titleLink": "/Zeneth/",
+    "theme": "hierarchy"
+}

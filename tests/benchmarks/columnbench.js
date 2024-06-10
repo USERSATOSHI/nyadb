@@ -16,6 +16,7 @@ const column = new Column({
 	memBufferConfig: {
 		threshHold: 100000,
 	},
+	path: "./b/column",
 	walConfig: {
 		path: "./b/column/txt.wal",
 		maxSize: 100000,

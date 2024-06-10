@@ -3,7 +3,7 @@ import { dataType, FileDataTypeMember, PossibleKeyType, TypedArray } from "../ty
 
 export function getDataTypeByteLength(type: dataType): number {
 	if (type.startsWith("str:")) {
-		return 2*parseInt(type.split(":")[1]);
+		return parseInt(type.split(":")[1]);
 	} else {
 		switch (type) {
 			case "i8":
@@ -142,73 +142,59 @@ export function ValueToTypedArray(input: any, type: dataType): TypedArray {
 
 export function ValueToDataType(input: unknown, type: dataType): Uint8Array {
 	if (type.startsWith("str:")) {
-		return new TextEncoder().encode(input as string);
-	} else {
-		switch (type) {
-			case "i8":
-				return new Uint8Array([input as number])
-			case "i16": {
-				// maths
-				const highbits = (input as number) >> 8;
-				const llowbits = (input as number) & 0xff;
-				return new Uint8Array([highbits, llowbits]);
-			}
-			case "i32": {
-				const highestbits = (input as number) >> 24;
-				const highbits = ((input as number) >> 16) & 0xff;
-				const lowbits = ((input as number) >> 8) & 0xff;
-				const lowestbits = (input as number) & 0xff;
-				return new Uint8Array([highestbits, highbits, lowbits, lowestbits]);
-			}
-			case "i64": {
-				const bigint = BigInt(input as number);
-				const highestbits = Number(bigint >> 56n);
-				const highbits = Number((bigint >> 48n) & 0xffn);
-				const highlowbits = Number((bigint >> 40n) & 0xffn);
-				const highlowestbits = Number((bigint >> 32n) & 0xffn);
-				const lowhighestbits = Number((bigint >> 24n) & 0xffn);
-				const lowhighbits = Number((bigint >> 16n) & 0xffn);
-				const lowlowbits = Number((bigint >> 8n) & 0xffn);
-				const lowestbits = Number(bigint & 0xffn);
-				return new Uint8Array([highestbits, highbits, highlowbits, highlowestbits, lowhighestbits, lowhighbits, lowlowbits, lowestbits]);
-			}
-			case "u8":
-				return new Uint8Array([input as number]);
-			case "u16": {
-				const highbits = (input as number) >> 8;
-				const llowbits = (input as number) & 0xff;
-				return new Uint8Array([highbits, llowbits]);
-			}
-			case "u32": {
-				const highestbits = (input as number) >> 24;
-				const highbits = ((input as number) >> 16) & 0xff;
-				const lowbits = ((input as number) >> 8) & 0xff;
-				const lowestbits = (input as number) & 0xff;
-				return new Uint8Array([highestbits, highbits, lowbits, lowestbits]);
-			}
-			case "u64": {
-				const bigint = BigInt(input as number);
-				const highestbits = Number(bigint >> 56n);
-				const highbits = Number((bigint >> 48n) & 0xffn);
-				const highlowbits = Number((bigint >> 40n) & 0xffn);
-				const highlowestbits = Number((bigint >> 32n) & 0xffn);
-				const lowhighestbits = Number((bigint >> 24n) & 0xffn);
-				const lowhighbits = Number((bigint >> 16n) & 0xffn);
-				const lowlowbits = Number((bigint >> 8n) & 0xffn);
-				const lowestbits = Number(bigint & 0xffn);
-				return new Uint8Array([highestbits, highbits, highlowbits, highlowestbits, lowhighestbits, lowhighbits, lowlowbits, lowestbits]);
-			}
-			case "f32": {
-				return new Uint8Array(new Float32Array([input as number]).buffer);
-			}
-			case "f64": {
-				return new Uint8Array(new Float64Array([input as number]).buffer);
-			}
-			case "bool":
-				return new Uint8Array([input as number]);
-			default:
-				throw new Error(`Invalid data type: ${type}`);
-		}
+        return new TextEncoder().encode(input as string);
+    } else {
+        const num = input as number;
+        switch (type) {
+            case "i8":
+            case "u8":
+            case "bool":
+                return new Uint8Array([num & 0xff]);
+
+            case "i16":
+            case "u16":
+                return new Uint8Array([(num >> 8) & 0xff, num & 0xff]);
+
+            case "i32":
+            case "u32":
+                return new Uint8Array([
+                    (num >> 24) & 0xff,
+                    (num >> 16) & 0xff,
+                    (num >> 8) & 0xff,
+                    num & 0xff
+                ]);
+
+            case "i64":
+            case "u64":
+                const bigInt = BigInt(num);
+                return new Uint8Array([
+                    Number((bigInt >> 56n) & 0xffn),
+                    Number((bigInt >> 48n) & 0xffn),
+                    Number((bigInt >> 40n) & 0xffn),
+                    Number((bigInt >> 32n) & 0xffn),
+                    Number((bigInt >> 24n) & 0xffn),
+                    Number((bigInt >> 16n) & 0xffn),
+                    Number((bigInt >> 8n) & 0xffn),
+                    Number(bigInt & 0xffn)
+                ]);
+
+            case "f32": {
+                const buffer = new ArrayBuffer(4);
+                const view = new DataView(buffer);
+                view.setFloat32(0, num, true);
+                return new Uint8Array(buffer);
+            }
+
+            case "f64": {
+                const buffer = new ArrayBuffer(8);
+                const view = new DataView(buffer);
+                view.setFloat64(0, num, true);
+                return new Uint8Array(buffer);
+            }
+
+            default:
+                throw new Error(`Invalid data type: ${type}`);
+        }
 	}
 }
 

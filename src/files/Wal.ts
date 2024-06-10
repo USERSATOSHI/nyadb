@@ -7,7 +7,7 @@ import { WalMethod } from "../typings/enum.js";
 import Column from "../structs/Column.js";
 import { getDataTypeByteLength } from "../utils/dataType.js";
 
-const WAL_FILE_MAGIC_NUMBER = [0x57, 0x41, 0x4c, 0x46];
+const WAL_FILE_MAGIC_NUMBER = new Uint8Array([0x57, 0x41, 0x4c, 0x46]);
 
 export const WAL_START_DELIMITER = new Uint8Array([0x01, 0x10, 0xef, 0xfe]);
 export const WAL_END_DELIMITER = new Uint8Array([0xfe, 0xef, 0x10, 0x01]);
@@ -37,6 +37,10 @@ export default class WalFile {
 
 	get fileSize() {
 		return this.#fileSize;
+	}
+
+	setPath(path: string) {
+		this.#options.path = path;
 	}
 
 	async open() {
@@ -96,12 +100,20 @@ export default class WalFile {
 
 		const walBuffer = new Uint8Array(9 + writeBuffer.byteLength);
 		let offset = 0;
-		walBuffer.set(WAL_START_DELIMITER, offset);
-		offset += 4;
+		walBuffer[offset++] = WAL_START_DELIMITER[0];
+		walBuffer[offset++] = WAL_START_DELIMITER[1];
+		walBuffer[offset++] = WAL_START_DELIMITER[2];
+		walBuffer[offset++] = WAL_START_DELIMITER[3];
+		
 		walBuffer.set(writeBuffer, offset);
 		offset += writeBuffer.byteLength;
+
 		walBuffer[offset++] = method;
-		walBuffer.set(WAL_END_DELIMITER, offset);
+
+		walBuffer[offset++] = WAL_END_DELIMITER[0];
+		walBuffer[offset++] = WAL_END_DELIMITER[1];
+		walBuffer[offset++] = WAL_END_DELIMITER[2];
+		walBuffer[offset++] = WAL_END_DELIMITER[3];
 
 		this.#readable.push(walBuffer);
 	}
@@ -113,12 +125,7 @@ export default class WalFile {
 		const logs: (DataNode | Uint8Array)[] = [];
 
 		while (start < this.#fileSize) {
-			await this.#fileHandle.read(
-				logLine,
-				0,
-				this.#length,
-				start
-			);
+			await this.#fileHandle.read(logLine, 0, this.#length, start);
 			logs.push(returnNode ? DataNode.fromWAL(logLine) : logLine);
 			start += this.#length;
 		}
@@ -130,9 +137,7 @@ export default class WalFile {
 		this.#readable.pause();
 		this.#writer.uncork();
 		await this.#fileHandle.sync();
-		await this.#fileHandle.truncate(
-			new Uint8Array([...WAL_FILE_MAGIC_NUMBER, 0x0a]).byteLength
-		);
+		await this.#fileHandle.truncate(WAL_FILE_MAGIC_NUMBER.byteLength + 1);
 		this.#fileSize = (await this.#fileHandle.stat()).size;
 		this.#readable.resume();
 		this.#paused = false;
@@ -142,6 +147,12 @@ export default class WalFile {
 		return {
 			fileSize: this.#fileSize,
 			entries: this.#fileSize / this.#length,
+		};
+	};
+
+	static defaultOptions(): IWalFileOptions {
+		return {
+			path: "./log.wal",
 		};
 	}
 }
